@@ -1,0 +1,1403 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light">
+<title>每日 AI 新闻简报</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='88'>📰</text></svg>">
+<style>
+/* ============================================================
+   每日 AI 新闻简报 / 前端控制台
+   设计方向:数字编辑部 / 新闻纸
+   - 单一强调色(报头朱红),全页锁定
+   - 衬线用于报头与标题(出版物身份),正文用系统黑体栈
+   - 圆角规则:卡片与面板 10px,按钮与输入 6px,chips 与徽章 999px
+   - 动效只动 transform / opacity,尊重 prefers-reduced-motion
+   - 版面:中央阅读区 + 左右悬浮边栏(平时藏于屏幕边缘,悬停滑出)
+   - z-index 刻度:mobilenav 30 / edgezone、scrim 39 / rail 40 / toast 60
+   ============================================================ */
+
+/* ---------- 设计令牌 ---------- */
+:root {
+  --paper: #F2F1ED;        /* 页面底,冷调新闻纸 */
+  --card: #FBFAF7;         /* 卡片纸白 */
+  --field: #FFFFFF;        /* 输入底色 */
+  --ink: #211F1A;          /* 正文墨色 */
+  --ink-2: #57534A;        /* 次级文字 */
+  --ink-3: #7A756B;        /* 弱化文字 / 占位 */
+  --line: #DDDBD3;         /* 发丝线 */
+  --line-2: #C9C6BD;       /* 强描边 */
+  --accent: #B03A2E;       /* 报头朱红,唯一强调色 */
+  --accent-deep: #8F2E22;  /* 朱红 hover */
+  --accent-soft: #F6E7E3;  /* 朱红浅底 */
+  --accent-ring: rgba(176, 58, 46, .28); /* 焦点环 */
+  --ok-bg: #E3EFE4;  --ok-ink: #24613A;      /* 已投递 */
+  --fail-bg: #F7E3E0; --fail-ink: #A13A2D;   /* 投递失败 */
+  --neutral-bg: #EDEBE5; --neutral-ink: #5B574E; /* 中性状态 */
+  --llm-bg: #F6E7E3; --llm-ink: #8F2E22;     /* LLM 模型徽章 */
+  --shadow-1: 0 1px 2px rgba(33, 31, 26, .05);
+  --shadow-2: 0 2px 6px rgba(33, 31, 26, .07), 0 12px 28px rgba(33, 31, 26, .09);
+  --rail-shadow: 0 2px 6px rgba(33, 31, 26, .08), 0 16px 40px rgba(33, 31, 26, .14);
+  --serif: Georgia, "Times New Roman", "Songti SC", "STSong", SimSun, serif;
+  --sans: "Segoe UI", -apple-system, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  --mono: "Cascadia Mono", Consolas, "SF Mono", Menlo, monospace;
+  --ease: cubic-bezier(.16, 1, .3, 1);
+  --rail-w: 304px;
+}
+
+/* ---------- 基础 ---------- */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: var(--sans);
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.65;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  -webkit-font-smoothing: antialiased;
+}
+[hidden] { display: none !important; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 5px; border: 2px solid var(--paper); }
+::-webkit-scrollbar-track { background: transparent; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ---------- 报头(masthead) ---------- */
+.masthead { padding: 36px 24px 0; }
+.masthead-inner { position: relative; max-width: 1000px; margin: 0 auto; }
+.masthead-title { display: flex; justify-content: center; align-items: center; gap: 14px; }
+.masthead h1 {
+  font-family: var(--serif);
+  font-size: clamp(26px, 4.2vw, 38px);
+  font-weight: 700;
+  letter-spacing: .08em;
+  color: var(--ink);
+  text-align: center;
+}
+.seal {
+  flex: none;
+  width: 34px; height: 34px;
+  background: var(--accent);
+  color: #fff;
+  font-family: var(--serif);
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: .02em;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 4px;
+  transform: rotate(4deg);
+  box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, .45);
+}
+.masthead-date {
+  margin-top: 13px;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--ink-3);
+  letter-spacing: .05em;
+}
+.masthead-sub { margin-top: 5px; text-align: center; font-size: 13px; color: var(--ink-2); }
+.masthead-rule { margin: 22px auto 0; height: 4px; border-top: 3px solid var(--ink); border-bottom: 1px solid var(--ink); }
+.masthead-user {
+  position: absolute;
+  right: 0; top: 2px;
+  display: flex; align-items: center; gap: 8px;
+}
+
+/* ---------- 视图骨架 ---------- */
+.app-main { flex: 1; display: flex; flex-direction: column; }
+.view { width: 100%; }
+.view-app { flex: 1; display: flex; flex-direction: column; }
+
+/* ---------- 登录 / 注册 ---------- */
+.view-login { padding: 0 16px 56px; }
+.login-card { max-width: 420px; margin: clamp(28px, 9vh, 96px) auto 0; }
+.form-stack { display: flex; flex-direction: column; gap: 16px; }
+.seg {
+  display: flex;
+  background: #EDEBE5;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 3px;
+  margin-bottom: 24px;
+}
+.seg button {
+  flex: 1;
+  padding: 8px 0;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: background-color .16s, color .16s, box-shadow .16s;
+}
+.seg button:hover { color: var(--ink); }
+.seg button[aria-selected="true"] { background: var(--field); color: var(--accent); box-shadow: var(--shadow-1); }
+.login-hint { margin-top: 16px; text-align: center; font-size: 12.5px; color: var(--ink-3); line-height: 1.7; }
+
+/* ---------- 中央阅读区 ---------- */
+.reading { flex: 1; width: 100%; max-width: 920px; margin: 0 auto; padding: 4px 24px 48px; }
+.detail {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--shadow-1);
+  padding: 40px 48px;
+  min-height: 60dvh;
+}
+.detail-empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center;
+  padding: 56px 24px;
+  min-height: 40dvh;
+}
+/* 阅读内容在宽版面内收敛,保持报纸版式阅读宽度(约 820px) */
+.detail-body, .detail-empty { max-width: 820px; margin: 0 auto; }
+.detail-body { animation: detail-in .3s var(--ease); }
+@keyframes detail-in { from { opacity: 0; transform: translateY(6px); } }
+.detail-title { font-family: var(--serif); font-size: clamp(22px, 2.6vw, 28px); font-weight: 700; line-height: 1.45; letter-spacing: .02em; }
+.detail-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+.detail-date { font-size: 12px; color: var(--ink-3); letter-spacing: .04em; }
+/* 报纸式双线分隔 */
+.detail-divider {
+  border: none;
+  height: 4px;
+  border-top: 3px solid var(--ink);
+  border-bottom: 1px solid var(--ink);
+  margin: 20px 0 24px;
+}
+.detail-error { font-size: 13px; color: var(--ink-2); line-height: 1.8; }
+
+/* ---------- 简报正文(迷你 markdown 渲染) ---------- */
+.md-body { font-size: 15px; line-height: 1.9; color: var(--ink); word-break: break-word; }
+.md-body h1 { font-family: var(--serif); font-size: 24px; font-weight: 700; line-height: 1.4; margin: 22px 0 10px; }
+.md-body h2 {
+  font-family: var(--serif); font-size: 19px; font-weight: 700;
+  margin: 26px 0 10px; padding-bottom: 6px;
+  border-bottom: 1px solid var(--line);
+}
+.md-body h3 { font-family: var(--serif); font-size: 16.5px; font-weight: 700; margin: 20px 0 8px; }
+.md-body p { margin: 8px 0; }
+.md-body ul { margin: 8px 0; padding-left: 22px; }
+.md-body li { margin: 4px 0; }
+.md-body li::marker { color: var(--accent); }
+.md-body strong { font-weight: 700; }
+.md-body blockquote {
+  margin: 12px 0;
+  padding: 10px 14px;
+  border-left: 3px solid var(--accent);
+  border-radius: 0 6px 6px 0;
+  background: var(--accent-soft);
+  color: var(--ink-2);
+}
+.md-body blockquote p { margin: 0; }
+.md-body a { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
+/* 点赞/点踩按钮:附在每条新闻标题行后,再点取消 */
+.vote-btns {
+  display: inline-flex; align-items: center; gap: 4px;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+.vbtn {
+  appearance: none;
+  border: 1px solid var(--line-2);
+  background: var(--field);
+  border-radius: 999px;
+  width: 26px; height: 26px;
+  padding: 0;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: .55;
+  transition: opacity .16s, transform .16s var(--ease), border-color .16s, background-color .16s;
+}
+.vbtn:hover { opacity: 1; border-color: var(--accent); transform: scale(1.08); }
+.vbtn:active { transform: scale(.94); }
+.vbtn.active {
+  opacity: 1;
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+.vbtn.active[data-vote="down"] { background: #F6E7E3; }
+.md-body a:hover { color: var(--accent-deep); }
+.md-body hr { border: none; border-top: 1px solid var(--line); margin: 20px 0; }
+
+/* ---------- 悬浮边栏(rail) ---------- */
+.rail {
+  position: fixed;
+  top: 24px; bottom: 24px;
+  width: var(--rail-w);
+  z-index: 40;
+  display: flex;
+  background: var(--card);
+  border: 1px solid var(--line-2);
+  border-radius: 10px;
+  box-shadow: var(--rail-shadow);
+  transition: transform .34s var(--ease);
+}
+.rail-left { left: 0; transform: translateX(-100%); }
+.rail-left.open { transform: translateX(0); }
+.rail-right { right: 0; transform: translateX(100%); }
+.rail-right.open { transform: translateX(0); }
+
+.rail-body {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column;
+  padding: 18px 16px 16px;
+  overflow: hidden;
+}
+.rail-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 2px 12px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 14px;
+}
+.rail-head h2 { font-family: var(--serif); font-size: 17px; font-weight: 700; letter-spacing: .03em; }
+.rail-scroll { flex: 1; min-height: 0; overflow-y: auto; padding-right: 2px; }
+.rail-scroll > * + * { margin-top: 16px; }
+
+/* 边缘触发区:屏幕边缘的细条,悬停滑出边栏(边栏完全隐藏,不露把手) */
+.edgezone { position: fixed; top: 0; bottom: 0; width: 16px; z-index: 39; }
+.edgezone-left { left: 0; }
+.edgezone-right { right: 0; }
+
+/* ---------- 右栏:操作与列表 ---------- */
+.rail-actions { display: flex; flex-direction: column; gap: 8px; }
+.btn-block { width: 100%; justify-content: center; padding: 11px 18px; }
+.rail-list { display: flex; flex-direction: column; gap: 8px; padding: 2px 0 4px; }
+.rail-item {
+  position: relative;
+  display: flex; align-items: flex-start; gap: 10px;
+  width: 100%;
+  padding: 10px 12px 10px 10px;
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font: inherit;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  animation: item-in .34s var(--ease) both;
+  animation-delay: calc(var(--i, 0) * 26ms);
+  transition: transform .16s var(--ease), border-color .16s, box-shadow .16s;
+}
+@keyframes item-in { from { opacity: 0; transform: translateY(5px); } }
+.rail-item:hover { transform: translateY(-1px); border-color: var(--line-2); box-shadow: var(--shadow-2); }
+.rail-item:active { transform: translateY(1px); box-shadow: none; }
+.rail-item.active { border-color: var(--accent); background: linear-gradient(90deg, var(--accent-soft), var(--field) 78%); }
+.rail-item.active::before {
+  content: "";
+  position: absolute;
+  left: -1px; top: 10px; bottom: 10px;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: var(--accent);
+}
+.rail-item.skel { pointer-events: none; }
+.ri-date { flex: none; width: 38px; display: flex; flex-direction: column; align-items: center; line-height: 1.25; padding-top: 1px; }
+.ri-date b { font-family: var(--serif); font-size: 20px; font-weight: 700; }
+.ri-date i { font-style: normal; font-size: 11px; color: var(--ink-3); }
+.ri-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.ri-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.ri-meta { display: flex; gap: 6px; flex-wrap: wrap; }
+.rail-empty { padding: 26px 14px; text-align: center; }
+.rail-empty-t { font-family: var(--serif); font-size: 15px; font-weight: 700; margin-bottom: 6px; }
+.rail-empty p { font-size: 12.5px; color: var(--ink-3); line-height: 1.7; }
+.rail-empty .btn { margin-top: 12px; }
+
+/* ---------- 左栏:订阅表单 ---------- */
+.sub-saved {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12.5px;
+  color: var(--ok-ink);
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity .25s var(--ease), transform .25s var(--ease);
+}
+.sub-saved.show { opacity: 1; transform: none; }
+.sub-saved svg { flex: none; }
+
+/* ---------- 卡片 / 表单 / chips ---------- */
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 26px 28px;
+  box-shadow: var(--shadow-1);
+}
+.field label { display: block; font-size: 13px; font-weight: 600; color: var(--ink-2); margin-bottom: 7px; }
+.control {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  background: var(--field);
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink);
+  transition: border-color .16s, box-shadow .16s;
+}
+.control::placeholder { color: var(--ink-3); }
+.control:hover { border-color: var(--ink-3); }
+.control:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
+textarea.control { min-height: 96px; resize: vertical; line-height: 1.7; }
+.field-hint { margin-top: 6px; font-size: 12px; color: var(--ink-3); line-height: 1.7; }
+/* 窄边栏内的两列小表单(推送时间 + 条数上限) */
+.field-row-2 { display: grid; grid-template-columns: 1.2fr 1fr; gap: 10px; margin-top: 16px; }
+.field-row-2 .field { min-width: 0; }
+.notice {
+  padding: 10px 14px;
+  background: #F0EEE7;
+  border: 1px dashed var(--line-2);
+  border-radius: 6px;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  line-height: 1.7;
+}
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { position: relative; }
+.chip input { position: absolute; opacity: 0; pointer-events: none; }
+.chip label {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 13px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  background: var(--field);
+  font-size: 12.5px;
+  color: var(--ink-2);
+  cursor: pointer;
+  user-select: none;
+  transition: background .16s, border-color .16s, color .16s, transform .16s var(--ease);
+}
+.chip label:hover { border-color: var(--accent); color: var(--accent); }
+.chip label:active { transform: scale(.97); }
+/* 选中态:底色/描边/字色变化即可,不打勾,文字天然居中 */
+.chip:has(input:checked) label { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-deep); font-weight: 600; }
+
+/* ---------- 按钮 ---------- */
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 9px 18px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: .01em;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: transform .15s var(--ease), box-shadow .15s var(--ease), background-color .15s, border-color .15s, color .15s;
+}
+.btn:disabled { opacity: .65; cursor: not-allowed; transform: none !important; }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: var(--accent-deep); transform: translateY(-1px); box-shadow: var(--shadow-2); }
+.btn-primary:active:not(:disabled) { transform: translateY(1px); box-shadow: none; }
+.btn-ghost { background: transparent; border-color: var(--line-2); color: var(--ink); }
+.btn-ghost:hover:not(:disabled) { border-color: var(--ink-3); background: rgba(33, 31, 26, .04); transform: translateY(-1px); }
+.btn-ghost:active:not(:disabled) { transform: translateY(1px); }
+.btn-sm { padding: 6px 12px; font-size: 12.5px; }
+.iconbtn {
+  flex: none;
+  width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: none;
+  color: var(--ink-3);
+  cursor: pointer;
+  transition: color .16s, border-color .16s, background-color .16s, transform .16s var(--ease);
+}
+.iconbtn:hover { color: var(--ink); border-color: var(--line-2); background: rgba(33, 31, 26, .04); }
+.iconbtn:active { transform: scale(.95); }
+
+/* ---------- 徽章 ---------- */
+.badge {
+  display: inline-flex; align-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.7;
+  padding: 2px 9px;
+  border-radius: 999px;
+}
+.badge-ok { background: var(--ok-bg); color: var(--ok-ink); }
+.badge-fail { background: var(--fail-bg); color: var(--fail-ink); }
+.badge-neutral { background: var(--neutral-bg); color: var(--neutral-ink); }
+.badge-llm { background: var(--llm-bg); color: var(--llm-ink); font-family: var(--mono); font-weight: 500; }
+
+/* ---------- 空状态 ---------- */
+.empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center;
+  padding: 52px 24px;
+}
+.empty h3 { font-family: var(--serif); font-size: 17px; font-weight: 700; margin: 18px 0 6px; }
+.empty p { font-size: 13px; color: var(--ink-3); max-width: 42ch; line-height: 1.7; }
+.empty .btn { margin-top: 16px; }
+.newspaper {
+  position: relative;
+  display: block;
+  width: 88px; height: 112px;
+  background: var(--card);
+  border: 1px solid var(--line-2);
+  border-radius: 4px;
+  box-shadow: var(--shadow-2);
+  transform: rotate(-4deg);
+}
+.newspaper::before {
+  content: "";
+  position: absolute; left: 10px; right: 10px; top: 12px;
+  height: 10px;
+  background: repeating-linear-gradient(90deg, var(--ink-2) 0 22px, transparent 22px 26px);
+  border-radius: 1px;
+}
+.newspaper::after {
+  content: "";
+  position: absolute; left: 10px; right: 10px; top: 30px;
+  height: 2px;
+  background: var(--line-2);
+  box-shadow: 0 9px 0 var(--line-2), 0 18px 0 var(--line-2), 0 27px 0 var(--line-2),
+              0 36px 0 var(--line-2), 0 45px 0 var(--line-2), 0 54px 0 var(--line-2),
+              0 63px 0 var(--line-2);
+}
+.np-mark {
+  position: absolute; right: -7px; top: -7px;
+  display: block;
+  width: 20px; height: 20px;
+  background: var(--accent);
+  border-radius: 3px;
+  transform: rotate(6deg);
+  box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, .5);
+}
+
+/* ---------- 骨架屏 ---------- */
+.sk { position: relative; overflow: hidden; background: #EAE8E2; border-radius: 4px; }
+.sk::after {
+  content: "";
+  position: absolute; inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(251, 250, 247, .85), transparent);
+  animation: shimmer 1.3s infinite;
+}
+@keyframes shimmer { to { transform: translateX(100%); } }
+
+/* ---------- Toast ---------- */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 30px;
+  transform: translate(-50%, 12px);
+  z-index: 60;
+  display: flex; align-items: center; gap: 10px;
+  max-width: min(480px, calc(100vw - 40px));
+  padding: 11px 16px;
+  background: #26231D;
+  color: #F7F5F0;
+  border-left: 3px solid #7BC47F;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.6;
+  box-shadow: 0 12px 32px rgba(33, 31, 26, .28);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity .26s var(--ease), transform .26s var(--ease), visibility .26s;
+}
+.toast.show { opacity: 1; visibility: visible; transform: translate(-50%, 0); }
+.toast.is-error { border-left-color: #F08A7B; }
+.toast svg { flex: none; }
+.toast span { word-break: break-word; }
+
+/* ---------- 加载 spinner ---------- */
+.spinner {
+  flex: none;
+  width: 13px; height: 13px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, .45);
+  border-top-color: #fff;
+  animation: spin .7s linear infinite;
+}
+.btn-ghost .spinner { border-color: rgba(33, 31, 26, .22); border-top-color: var(--ink-2); }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---------- 遮罩(移动端抽屉) ---------- */
+.scrim {
+  position: fixed; inset: 0;
+  z-index: 39;
+  background: rgba(33, 31, 26, .32);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity .26s var(--ease), visibility .26s;
+}
+.scrim.show { opacity: 1; visibility: visible; }
+
+/* ---------- 移动端工具栏 ---------- */
+.mobilenav { display: none; }
+
+/* ---------- 页脚 ---------- */
+.footer {
+  display: flex; justify-content: center;
+  padding: 0 24px 40px;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+/* ---------- 响应式:窄屏边栏转为抽屉 ---------- */
+@media (max-width: 900px) {
+  .mobilenav {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    background: var(--paper);
+    border-bottom: 1px solid var(--line);
+    padding: 8px 14px;
+    overflow-x: auto;
+  }
+  .mobilenav .spacer { flex: 1; }
+  .masthead-user { display: none; }
+  .edgezone { display: none; }
+  .rail {
+    top: 0; bottom: 0;
+    width: min(320px, 86vw);
+    border-radius: 0;
+    box-shadow: none;
+    transition: transform .3s var(--ease);
+  }
+  .rail-left { left: 0; transform: translateX(-104%); border-left: none; }
+  .rail-left.open { transform: translateX(0); }
+  .rail-right { right: 0; transform: translateX(104%); border-right: none; }
+  .rail-right.open { transform: translateX(0); }
+}
+@media (max-width: 760px) {
+  .masthead { padding-top: 26px; }
+  .masthead h1 { font-size: 26px; letter-spacing: .06em; }
+  .masthead-rule { margin-top: 18px; }
+  .reading { padding: 0 14px 40px; }
+  .detail { padding: 22px 16px; min-height: 0; }
+  .detail-empty { padding: 40px 16px; min-height: 0; }
+  .card { padding: 20px 16px; }
+  .md-body { font-size: 14.5px; }
+}
+
+/* ---------- 减弱动效 ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+  html { scroll-behavior: auto; }
+}
+</style>
+</head>
+<body>
+
+<!-- ============ 报头(登录页与主界面共用) ============ -->
+<header class="masthead">
+  <div class="masthead-inner">
+    <div class="masthead-title">
+      <span class="seal" aria-hidden="true">AI</span>
+      <h1>每日 AI 新闻简报</h1>
+    </div>
+    <p class="masthead-date" id="masthead-date"></p>
+    <p class="masthead-sub">订阅你关心的 AI 话题,每天定时为你编一份简报</p>
+    <div class="masthead-rule" aria-hidden="true"></div>
+    <div class="masthead-user" id="masthead-user" hidden>
+      <button class="btn btn-primary btn-sm" id="btn-deliver" disabled title="把当前阅读的简报发送到注册邮箱">📧 发送到邮箱</button>
+      <button class="btn btn-ghost btn-sm" id="btn-logout">退出登录</button>
+    </div>
+  </div>
+</header>
+
+<main class="app-main">
+
+  <!-- ============ 登录 / 注册(全屏) ============ -->
+  <section id="view-login" class="view view-login">
+    <div class="card login-card">
+      <div class="seg" role="tablist" aria-label="登录方式">
+        <button type="button" role="tab" id="seg-login" aria-selected="true">登录</button>
+        <button type="button" role="tab" id="seg-register" aria-selected="false">注册</button>
+      </div>
+      <form id="login-form" class="form-stack" novalidate>
+        <div class="field">
+          <label for="f-email">邮箱</label>
+          <input class="control" type="email" id="f-email" autocomplete="email" placeholder="you@example.com">
+        </div>
+        <div class="field">
+          <label for="f-password">密码</label>
+          <input class="control" type="password" id="f-password" autocomplete="current-password" placeholder="请输入密码">
+        </div>
+        <div class="field" id="field-name" hidden>
+          <label for="f-name">姓名</label>
+          <input class="control" type="text" id="f-name" autocomplete="name" placeholder="怎么称呼你">
+        </div>
+        <button class="btn btn-primary btn-block" id="btn-auth" type="submit">登录</button>
+      </form>
+      <p class="login-hint" id="login-hint">登录后自动载入你的订阅与历史简报</p>
+    </div>
+  </section>
+
+  <!-- ============ 主界面 ============ -->
+  <section id="view-app" class="view view-app" hidden>
+
+    <nav class="mobilenav" aria-label="面板">
+      <button class="btn btn-ghost btn-sm" data-rail="rail-sub">订阅设置</button>
+      <button class="btn btn-ghost btn-sm" data-rail="rail-hist">历史简报</button>
+      <span class="spacer"></span>
+      <button class="btn btn-ghost btn-sm" id="btn-logout-m">退出登录</button>
+    </nav>
+
+    <!-- 左侧悬浮边栏:订阅设置 -->
+    <aside class="rail rail-left" id="rail-sub" aria-label="订阅设置">
+      <div class="rail-body">
+        <div class="rail-head">
+          <h2>订阅设置</h2>
+          <button class="iconbtn rail-close" type="button" aria-label="关闭面板">
+            <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+        <div class="rail-scroll">
+          <div class="notice" id="sub-notice" hidden>尚未保存过订阅偏好,当前使用默认设置。保存后按你的主题与关键词生成简报。</div>
+          <div class="field">
+            <label>关注的主题</label>
+            <div class="chips" id="topic-box"></div>
+          </div>
+          <div class="field">
+            <label for="f-keywords">关键词</label>
+            <textarea class="control" id="f-keywords" rows="6" placeholder="OpenAI&#10;DeepSeek"></textarea>
+            <p class="field-hint">每行一个关键词</p>
+          </div>
+          <div class="field-row-2">
+            <div class="field">
+              <label for="f-digest-time">推送时间</label>
+              <input class="control" type="time" id="f-digest-time" value="08:00">
+            </div>
+            <div class="field">
+              <label for="f-max-items">条数上限</label>
+              <input class="control" type="number" id="f-max-items" value="10" min="1" max="30">
+            </div>
+          </div>
+          <p class="field-hint">每天在你所在时区的推送时间自动生成并发送到注册邮箱</p>
+          <div class="sub-saved" id="sub-saved" role="status">
+            <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8.5l3.5 3.5 7.5-8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span>订阅已保存</span>
+          </div>
+          <button class="btn btn-primary btn-block" id="btn-save-sub">保存订阅</button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- 右侧悬浮边栏:历史简报 -->
+    <aside class="rail rail-right" id="rail-hist" aria-label="历史简报">
+      <div class="rail-body">
+        <div class="rail-head">
+          <h2>历史简报</h2>
+          <button class="iconbtn rail-close" type="button" aria-label="关闭面板">
+            <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+        <div class="rail-scroll">
+          <div class="rail-actions">
+            <button class="btn btn-primary btn-block" id="btn-run">⚡ 立即生成今日简报</button>
+            <button class="btn btn-ghost btn-block" id="btn-refresh">
+              <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 8a5.5 5.5 0 1 1-1.61-3.9M13.5 1.5v3h-3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              刷新列表
+            </button>
+          </div>
+          <div class="rail-list" id="digest-list"></div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- 边缘触发区 -->
+    <div class="edgezone edgezone-left" id="edgezone-left" aria-hidden="true"></div>
+    <div class="edgezone edgezone-right" id="edgezone-right" aria-hidden="true"></div>
+
+    <!-- 遮罩 -->
+    <div class="scrim" id="scrim" aria-hidden="true"></div>
+
+    <!-- 中央阅读区 -->
+    <div class="reading">
+      <article class="detail" id="detail" tabindex="-1">
+        <!-- 初始为加载态骨架;列表加载完成后替换为简报内容或真·空状态 -->
+        <div class="detail-empty" id="detail-empty" aria-live="polite">
+          <div style="display:flex;flex-direction:column;gap:14px;width:100%;max-width:520px" aria-hidden="true">
+            <span class="sk" style="width:58%;height:26px"></span>
+            <span class="sk" style="width:34%;height:13px"></span>
+            <span class="sk" style="width:100%;height:14px"></span>
+            <span class="sk" style="width:96%;height:14px"></span>
+            <span class="sk" style="width:98%;height:14px"></span>
+            <span class="sk" style="width:88%;height:14px"></span>
+            <span class="sk" style="width:62%;height:14px"></span>
+          </div>
+        </div>
+        <div class="detail-body" id="detail-body" hidden></div>
+      </article>
+    </div>
+
+    <footer class="footer">
+      <span>每日 AI 新闻简报</span>
+    </footer>
+  </section>
+
+</main>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   API 与状态
+   - 鉴权:除 register/login 外所有接口带 Bearer token
+   - 401:清除 token,回到登录页并提示
+   ============================================================ */
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const NO_KICK = ["/api/auth/login", "/api/auth/register"]; /* 这两个接口的 401 是凭证错误,不算会话过期 */
+
+let token = localStorage.getItem("dailynews_token") || "";
+let user = null;
+let latestUpdatedAt = 0;   /* 列表最新一条简报的更新时间,用于生成轮询判定(同天重生成也会变) */
+let running = false;       /* 生成简报轮询进行中 */
+let selectedDigestId = null;
+let sessionExpiredFired = false;
+
+async function api(path, opts = {}) {
+  const headers = { "Content-Type": "application/json" };
+  if (token && !NO_KICK.includes(path)) headers["Authorization"] = "Bearer " + token;
+  let r;
+  try {
+    r = await fetch(path, { headers, ...opts });
+  } catch (e) {
+    const err = new Error("网络错误,无法连接服务器");
+    err.status = 0;
+    throw err;
+  }
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    if (r.status === 401 && token) sessionExpired();
+    const err = new Error(data.detail || `请求失败(${r.status})`);
+    err.status = r.status;
+    throw err;
+  }
+  return data;
+}
+
+/* 会话过期:清 token,回登录页(仅提示一次,登录成功后复位) */
+function sessionExpired() {
+  if (sessionExpiredFired) return;
+  sessionExpiredFired = true;
+  token = "";
+  localStorage.removeItem("dailynews_token");
+  user = null;
+  running = false;
+  closeAllRails();
+  showLogin();
+  toast("登录已过期,请重新登录", "err");
+}
+
+/* ============================================================
+   Toast(全局通知)
+   ============================================================ */
+const TOAST_ICONS = {
+  ok:  '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8.5l3.5 3.5 7.5-8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  err: '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+};
+let toastTimer;
+function toast(msg, type = "ok") {
+  const el = $("toast");
+  el.className = "toast show" + (type === "err" ? " is-error" : "");
+  el.innerHTML = TOAST_ICONS[type] + "<span>" + esc(msg) + "</span>";
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove("show"), type === "err" ? 4600 : 2800);
+}
+
+/* ============================================================
+   按钮加载态(防重复提交)
+   ============================================================ */
+function setBtnLoading(btn, loading, text = "处理中…") {
+  if (loading) {
+    if (!btn.dataset.label) btn.dataset.label = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner" aria-hidden="true"></span>' + esc(text);
+  } else {
+    btn.disabled = false;
+    if (btn.dataset.label) btn.innerHTML = btn.dataset.label;
+  }
+}
+
+/* ============================================================
+   视图切换
+   ============================================================ */
+function showLogin() {
+  closeAllRails();
+  $("view-app").hidden = true;
+  $("view-login").hidden = false;
+  $("masthead-user").hidden = true;
+  $("login-form").reset();
+  setAuthMode("login");
+}
+function enterApp() {
+  $("view-login").hidden = true;
+  $("view-app").hidden = false;
+  $("masthead-user").hidden = false;
+  resetRunBtn();
+  loadSubscription();  /* 左侧边栏自动加载订阅 */
+  loadDigests();       /* 右侧列表自动加载,中心自动展示最新一期 */
+}
+
+/* ============================================================
+   登录 / 注册
+   ============================================================ */
+let authMode = "login";
+function setAuthMode(mode) {
+  authMode = mode;
+  $("seg-login").setAttribute("aria-selected", String(mode === "login"));
+  $("seg-register").setAttribute("aria-selected", String(mode === "register"));
+  $("field-name").hidden = mode === "login";
+  $("f-password").autocomplete = mode === "login" ? "current-password" : "new-password";
+  $("btn-auth").textContent = mode === "login" ? "登录" : "注册";
+  $("login-hint").textContent = mode === "login"
+    ? "登录后自动载入你的订阅与历史简报"
+    : "注册成功后自动登录并进入简报";
+}
+$("seg-login").addEventListener("click", () => setAuthMode("login"));
+$("seg-register").addEventListener("click", () => setAuthMode("register"));
+
+$("login-form").addEventListener("submit", async ev => {
+  ev.preventDefault();
+  const email = $("f-email").value.trim();
+  const password = $("f-password").value;
+  const name = $("f-name").value.trim();
+  if (!/^\S+@\S+$/.test(email)) return toast("请填写有效的邮箱地址", "err");
+  if (!password) return toast("请填写密码", "err");
+  if (authMode === "register" && !name) return toast("请填写姓名", "err");
+  const btn = $("btn-auth");
+  const path = authMode === "register" ? "/api/auth/register" : "/api/auth/login";
+  const payload = authMode === "register" ? { email, password, name } : { email, password };
+  setBtnLoading(btn, true, authMode === "register" ? "注册中…" : "登录中…");
+  try {
+    const res = await api(path, { method: "POST", body: JSON.stringify(payload) });
+    token = res.token || "";
+    user = res.user || null;
+    localStorage.setItem("dailynews_token", token);
+    sessionExpiredFired = false;
+    enterApp();
+    toast(authMode === "register" ? "注册成功,欢迎加入" : "登录成功");
+  } catch (e) {
+    if (e.status !== 401) toast(e.message, "err");
+  } finally {
+    setBtnLoading(btn, false);
+  }
+});
+
+/* ============================================================
+   退出登录(主界面任意位置可用)
+   ============================================================ */
+async function doLogout() {
+  try { await api("/api/auth/logout", { method: "POST" }); } catch (e) { /* 忽略退出接口错误 */ }
+  token = "";
+  localStorage.removeItem("dailynews_token");
+  user = null;
+  running = false;
+  showLogin();
+  toast("已退出登录");
+}
+$("btn-logout").addEventListener("click", doLogout);
+$("btn-logout-m").addEventListener("click", doLogout);
+
+/* ============================================================
+   订阅(左侧边栏)
+   ============================================================ */
+const TOPICS = ["大模型", "智能体", "开源", "芯片", "机器人", "数据安全", "产品", "政策监管", "其他"];
+const topicBox = $("topic-box");
+TOPICS.forEach(t => {
+  const wrap = document.createElement("div");
+  wrap.className = "chip";
+  const label = document.createElement("label");
+  const input = document.createElement("input");
+  input.type = "checkbox";
+  input.value = t;
+  const span = document.createElement("span");
+  span.textContent = t;
+  label.appendChild(input);
+  label.appendChild(span);
+  wrap.appendChild(label);
+  topicBox.appendChild(wrap);
+});
+const checkedTopics = () => [...topicBox.querySelectorAll("input:checked")].map(i => i.value);
+const lines = v => (v || "").split("\n").map(s => s.trim()).filter(Boolean);
+
+async function loadSubscription() {
+  if (!user) return;
+  try {
+    const s = await api(`/api/users/${user.id}/subscription`);
+    topicBox.querySelectorAll("input").forEach(i => i.checked = (s.topics || []).includes(i.value));
+    $("f-keywords").value = (s.keywords || []).join("\n");
+    $("f-digest-time").value = s.digest_time || "08:00";
+    $("f-max-items").value = s.max_items ?? 10;
+    $("sub-notice").hidden = true;
+  } catch (e) {
+    if (e.status === 401) return;
+    if (e.status === 404) {
+      /* 尚未设置订阅,显示空状态与默认提示 */
+      topicBox.querySelectorAll("input").forEach(i => i.checked = false);
+      $("f-keywords").value = "";
+      $("f-digest-time").value = "08:00";
+      $("f-max-items").value = 10;
+      $("sub-notice").hidden = false;
+    } else {
+      toast("加载订阅失败:" + e.message, "err");
+    }
+  }
+}
+
+$("btn-save-sub").addEventListener("click", async () => {
+  if (!user) return;
+  const payload = {
+    topics: checkedTopics(),
+    keywords: lines($("f-keywords").value),
+    digest_time: $("f-digest-time").value || "08:00",
+    max_items: parseInt($("f-max-items").value) || 10,
+  };
+  const btn = $("btn-save-sub");
+  setBtnLoading(btn, true, "保存中…");
+  try {
+    await api(`/api/users/${user.id}/subscription`, { method: "PUT", body: JSON.stringify(payload) });
+    $("sub-notice").hidden = true;
+    const fb = $("sub-saved");            /* 边栏内轻反馈 */
+    fb.classList.remove("show");
+    void fb.offsetWidth;
+    fb.classList.add("show");
+    clearTimeout(fb._t);
+    fb._t = setTimeout(() => fb.classList.remove("show"), 2600);
+    toast("订阅已保存");
+  } catch (e) {
+    if (e.status !== 401) toast("保存失败:" + e.message, "err");
+  } finally {
+    setBtnLoading(btn, false);
+  }
+});
+
+/* ============================================================
+   历史简报(右侧边栏)
+   ============================================================ */
+function railSkeletonHTML() {
+  let h = "";
+  for (let i = 0; i < 5; i++) {
+    h += `
+      <div class="rail-item skel" aria-hidden="true">
+        <span class="ri-date"><span class="sk" style="width:26px;height:20px"></span></span>
+        <span class="ri-main">
+          <span class="sk" style="width:${72 + (i % 3) * 10}%;height:12px"></span>
+          <span class="sk" style="width:46%;height:10px"></span>
+        </span>
+      </div>`;
+  }
+  return h;
+}
+
+const STATUS_BADGE = {
+  delivered: ["已投递", "ok"],
+  failed: ["投递失败", "fail"],
+  composed: ["已生成", "neutral"],
+  generating: ["生成中", "neutral"],
+  composing: ["生成中", "neutral"],
+};
+function statusBadgeHTML(status) {
+  const [label, cls] = STATUS_BADGE[status] || [status, "neutral"];
+  return `<span class="badge badge-${cls}">${esc(label)}</span>`;
+}
+function modeBadgeHTML(modelUsed) {
+  return modelUsed
+    ? `<span class="badge badge-llm">${esc(modelUsed)}</span>`
+    : `<span class="badge badge-neutral">确定性</span>`;
+}
+
+async function loadDigests() {
+  if (!user) return;
+  const list = $("digest-list");
+  list.innerHTML = railSkeletonHTML();
+  try {
+    const ds = await api(`/api/users/${user.id}/digests?limit=30`);
+    latestUpdatedAt = ds.length ? new Date(ds[0].updated_at).getTime() : 0;
+    if (!ds.length) {
+      list.innerHTML = `
+        <div class="rail-empty">
+          <p class="rail-empty-t">还没有简报</p>
+          <p>点击上方「立即生成今日简报」,生成你的第一份简报</p>
+        </div>`;
+      /* 列表确实为空 → 中央显示真·空状态(不再是加载态) */
+      $("detail-empty").innerHTML = `
+        <span class="newspaper" aria-hidden="true"><i class="np-mark"></i></span>
+        <h3>还没有简报</h3>
+        <p>点「立即生成今日简报」,生成你的第一份简报。</p>`;
+      return;
+    }
+    list.innerHTML = "";
+    ds.forEach((d, i) => list.appendChild(digestItemEl(d, i)));
+    /* 默认自动选中最新一期;已选中的若仍在列表则保持 */
+    if (!ds.some(d => d.id === selectedDigestId)) selectDigest(ds[0].id);
+  } catch (e) {
+    if (e.status === 401) return;
+    list.innerHTML = `
+      <div class="rail-empty">
+        <p class="rail-empty-t">列表加载失败</p>
+        <p>${esc(e.message)}</p>
+        <button class="btn btn-ghost btn-sm" id="btn-retry-list">重试</button>
+      </div>`;
+    $("btn-retry-list").addEventListener("click", loadDigests);
+    toast("加载简报列表失败:" + e.message, "err");
+  }
+}
+
+function digestItemEl(d, i) {
+  const el = document.createElement("button");
+  el.type = "button";
+  el.className = "rail-item";
+  el.dataset.id = d.id;
+  el.style.setProperty("--i", Math.min(i, 12));
+  const [, m, dd] = String(d.date || "").split("-");
+  el.innerHTML = `
+    <span class="ri-date" aria-hidden="true"><b>${esc(dd || "--")}</b><i>${esc(m || "--")}月</i></span>
+    <span class="ri-main">
+      <span class="ri-title">${esc(d.title || d.date)}</span>
+      <span class="ri-meta">${statusBadgeHTML(d.status)}${modeBadgeHTML(d.model_used)}</span>
+    </span>`;
+  el.addEventListener("click", () => selectDigest(d.id, { fromUser: true }));
+  return el;
+}
+
+/* ---------- 详情 ---------- */
+/* 已读简报的渲染缓存:来回点击不重复请求(内存 Map,上限 20 条) */
+const digestCache = new Map();
+
+function detailSkeletonHTML() {
+  return `
+    <div style="display:flex;flex-direction:column;gap:14px" aria-hidden="true">
+      <span class="sk" style="width:58%;height:26px"></span>
+      <span class="sk" style="width:34%;height:13px"></span>
+      <span class="sk" style="width:100%;height:14px"></span>
+      <span class="sk" style="width:96%;height:14px"></span>
+      <span class="sk" style="width:98%;height:14px"></span>
+      <span class="sk" style="width:88%;height:14px"></span>
+      <span class="sk" style="width:62%;height:14px"></span>
+    </div>`;
+}
+
+async function selectDigest(id, opts = {}) {
+  selectedDigestId = id;
+  $("btn-deliver").disabled = false;  /* 有选中的简报即可发送到邮箱 */
+  document.querySelectorAll("#digest-list .rail-item.active").forEach(x => x.classList.remove("active"));
+  const el = $("digest-list").querySelector(`.rail-item[data-id="${esc(id)}"]`);
+  if (el) el.classList.add("active");
+
+  /* 窄屏:选完立即收起抽屉,回到阅读区顶部 */
+  if (opts.fromUser && window.matchMedia("(max-width: 900px)").matches) {
+    closeMobileDrawers();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  const body = $("detail-body");
+  $("detail-empty").hidden = true;
+  body.hidden = false;
+
+  const cached = digestCache.get(id);
+  if (cached) {
+    body.innerHTML = cached;  /* 命中缓存:直接渲染,再按最新投票状态点亮按钮 */
+    applyAllVotes(body, digestVotes[id] || {});
+    return;
+  }
+  body.innerHTML = detailSkeletonHTML();
+
+  try {
+    const d = await api(`/api/digests/${encodeURIComponent(id)}`);
+    if (selectedDigestId !== id) return;  /* 期间用户切换了其他简报 */
+    digestVotes[id] = d.votes || {};
+    const html = detailHTML(d);
+    digestCache.set(id, html);
+    if (digestCache.size > 20) digestCache.delete(digestCache.keys().next().value);  /* 简单容量上限 */
+    body.innerHTML = html;
+  } catch (e) {
+    if (e.status === 401) return;
+    if (selectedDigestId !== id) return;
+    body.innerHTML = `
+      <div class="detail-error">
+        加载简报失败:${esc(e.message)}
+        <div style="margin-top:12px"><button class="btn btn-ghost btn-sm" id="btn-retry-detail">重试</button></div>
+      </div>`;
+    $("btn-retry-detail").addEventListener("click", () => selectDigest(id, opts));
+  }
+}
+
+function detailHTML(d) {
+  const [y, m, dd] = String(d.date || "").split("-");
+  const dateText = y ? `${y} 年 ${m} 月 ${dd} 日` : (d.date || "");
+  return `
+    <h2 class="detail-title">${esc(d.title || d.date)}</h2>
+    <div class="detail-meta">
+      <span class="detail-date">${esc(dateText)}</span>
+      ${statusBadgeHTML(d.status)}
+      ${modeBadgeHTML(d.model_used)}
+    </div>
+    <hr class="detail-divider">
+    <div class="md-body">${renderMarkdown(d.content_md || "", d.items || [], d.votes || {})}</div>`;
+}
+
+/* ---------- 点赞/点踩 ---------- */
+const digestVotes = {};  /* digestId -> {articleId: "up"|"down"|"none"} */
+
+function voteBtnsHTML(articleId, state) {
+  return `<span class="vote-btns" data-vote-box="${articleId}">
+    <button class="vbtn${state === "up" ? " active" : ""}" data-vote="up" data-article="${articleId}" aria-label="喜欢">👍</button>
+    <button class="vbtn${state === "down" ? " active" : ""}" data-vote="down" data-article="${articleId}" aria-label="不喜欢">👎</button>
+  </span>`;
+}
+
+function applyVoteState(container, articleId, state) {
+  container.querySelectorAll(`[data-vote-box="${articleId}"] .vbtn`).forEach(b => {
+    b.classList.toggle("active", b.dataset.vote === state);
+  });
+}
+
+function applyAllVotes(container, votes) {
+  for (const [aid, st] of Object.entries(votes || {})) applyVoteState(container, aid, st);
+}
+
+/* 事件委托:点击 👍/👎 切换,再点同方向取消;取消也会落库并更新画像 */
+$("detail-body").addEventListener("click", async e => {
+  const btn = e.target.closest(".vbtn");
+  if (!btn || !user || !selectedDigestId) return;
+  const articleId = Number(btn.dataset.article);
+  const digestId = selectedDigestId;
+  const current = (digestVotes[digestId] || {})[articleId] || "none";
+  const target = btn.dataset.vote === current ? "none" : btn.dataset.vote;  /* 再点取消 */
+  try {
+    const r = await api(`/api/digests/${digestId}/vote`, {
+      method: "POST",
+      body: JSON.stringify({ article_id: articleId, vote: target }),
+    });
+    digestVotes[digestId] = digestVotes[digestId] || {};
+    digestVotes[digestId][articleId] = r.vote;
+    applyVoteState($("detail-body"), articleId, r.vote);
+  } catch (e) {
+    if (e.status !== 401) toast("操作失败:" + e.message, "err");
+  }
+});
+
+/* ---------- 迷你 markdown 渲染 ----------
+   支持:# / ## / ### 标题、**加粗**、[文字](链接)、- 无序列表、> 引用、--- 分隔线
+   http(s) 链接新窗口打开(rel=noopener),相对路径当前页打开,其余协议不生成链接
+   items/votes 传入时,命中条目的列表行会附加 👍/👎 投票按钮 */
+function renderMarkdown(md, items = [], votes = {}) {
+  const inline = s => esc(s)
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (m, text, href) => {
+      if (/^https?:\/\//i.test(href)) return `<a href="${href}" target="_blank" rel="noopener">${text}</a>`;
+      if (/^[\/#.]/.test(href)) return `<a href="${href}">${text}</a>`;
+      return text;
+    });
+  const lines = String(md || "").split("\n");
+  let html = "", listOpen = false;
+  for (const line of lines) {
+    const t = line.trim();
+    if (!t) { if (listOpen) { html += "</ul>"; listOpen = false; } continue; }
+    if (/^-{3,}$/.test(t)) { html += "<hr>"; continue; }
+    if (t.startsWith("### ")) { html += `<h3>${inline(t.slice(4))}</h3>`; continue; }
+    if (t.startsWith("## ")) { html += `<h2>${inline(t.slice(3))}</h2>`; continue; }
+    if (t.startsWith("# ")) { html += `<h1>${inline(t.slice(2))}</h1>`; continue; }
+    if (t.startsWith(">")) {
+      if (listOpen) { html += "</ul>"; listOpen = false; }
+      html += `<blockquote>${inline(t.replace(/^>\s?/, ""))}</blockquote>`;
+      continue;
+    }
+    if (/^[-*]\s+/.test(t)) {
+      if (!listOpen) { html += "<ul>"; listOpen = true; }
+      const text = t.replace(/^[-*]\s+/, "");
+      const item = items.find(i => i.title && text.includes(i.title));
+      const extra = item ? voteBtnsHTML(item.article_id, votes[item.article_id] || "") : "";
+      html += `<li>${inline(text)}${extra}</li>`;
+      continue;
+    }
+    if (listOpen) { html += "</ul>"; listOpen = false; }
+    html += `<p>${inline(t)}</p>`;
+  }
+  if (listOpen) html += "</ul>";
+  return html;
+}
+
+/* ---------- 立即生成今日简报 ---------- */
+function resetRunBtn() {
+  const btn = $("btn-run");
+  btn.disabled = false;
+  if (btn.dataset.label) btn.innerHTML = btn.dataset.label;
+}
+
+$("btn-run").addEventListener("click", async () => {
+  if (!user || running) return;
+  running = true;
+  const btn = $("btn-run");
+  if (!btn.dataset.label) btn.dataset.label = btn.innerHTML;
+  const showRun = text => { btn.disabled = true; btn.innerHTML = '<span class="spinner" aria-hidden="true"></span>' + esc(text); };
+
+  showRun("提交中…");
+  try {
+    await api(`/api/admin/users/${user.id}/run`, { method: "POST" });
+  } catch (e) {
+    running = false;
+    resetRunBtn();
+    if (e.status !== 401) toast("触发失败:" + e.message, "err");
+    return;
+  }
+  toast("已提交生成任务,正在等待简报出炉");
+
+  /* 轮询列表,3 秒一次,最多 20 次;简报更新时间晚于提交前即成功(同天重生成也适用) */
+  const before = latestUpdatedAt;
+  let done = false;
+  for (let i = 1; i <= 20; i++) {
+    showRun(`生成中 ${i}/20`);
+    await sleep(3000);
+    if (!running) return;  /* 期间退出登录 */
+    try {
+      const ds = await api(`/api/users/${user.id}/digests?limit=1`);
+      if (ds.length && new Date(ds[0].updated_at).getTime() > before) { done = true; break; }
+    } catch (e) {
+      if (e.status === 401) return;
+      /* 网络抖动,继续轮询 */
+    }
+  }
+
+  running = false;
+  resetRunBtn();
+  digestCache.clear();  /* 重生成后旧缓存失效,强制重新拉取详情 */
+  await loadDigests();
+  if (done) toast("今日简报已生成,已为你打开最新一期;满意可点右上角「发送到邮箱」");
+  else toast("生成可能仍在后台进行,请稍后手动刷新");
+});
+
+$("btn-refresh").addEventListener("click", async () => {
+  if (!user) return;
+  const btn = $("btn-refresh");
+  setBtnLoading(btn, true, "刷新中…");
+  try {
+    await loadDigests();
+  } finally {
+    setBtnLoading(btn, false);
+  }
+});
+
+/* ---------- 发送到邮箱(仅按钮/定时任务触发,生成不自动投递) ---------- */
+$("btn-deliver").addEventListener("click", async () => {
+  if (!user || !selectedDigestId) return;
+  const btn = $("btn-deliver");
+  setBtnLoading(btn, true, "发送中…");
+  try {
+    const r = await api(`/api/digests/${selectedDigestId}/deliver`, { method: "POST" });
+    toast(r.message || "已发送到邮箱");
+  } catch (e) {
+    if (e.status !== 401) toast("发送失败:" + e.message, "err");
+  } finally {
+    setBtnLoading(btn, false);
+  }
+});
+
+/* ============================================================
+   边栏交互
+   - 桌面:鼠标移向屏幕边缘(边缘触发区或边栏本身)滑出,移开收回
+   - 边栏完全隐藏,无把手、无钉住;关闭按钮/Esc 立即收起
+   - 窄屏:由移动端工具栏按钮唤起抽屉,遮罩点击或 Esc 关闭
+   ============================================================ */
+const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+function setupRails() {
+  document.querySelectorAll(".rail").forEach(rail => {
+    const zone = $("edgezone-" + (rail.classList.contains("rail-left") ? "left" : "right"));
+    let openT = 0, closeT = 0;
+
+    const open = () => {
+      clearTimeout(closeT);
+      openT = setTimeout(() => rail.classList.add("open"), reduceMotion ? 0 : 110);
+    };
+    const close = () => {
+      clearTimeout(openT);
+      closeT = setTimeout(() => rail.classList.remove("open"), 280);
+    };
+
+    rail.addEventListener("pointerenter", open);
+    rail.addEventListener("pointerleave", close);
+    zone.addEventListener("pointerenter", open);
+    zone.addEventListener("pointerleave", close);
+
+    rail.querySelector(".rail-close").addEventListener("click", () => {
+      clearTimeout(openT);
+      clearTimeout(closeT);
+      rail.classList.remove("open");
+    });
+  });
+
+  $("scrim").addEventListener("click", closeMobileDrawers);
+  document.querySelectorAll("[data-rail]").forEach(btn => {
+    btn.addEventListener("click", () => openMobileDrawer($(btn.dataset.rail)));
+  });
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape") closeAllRails();
+  });
+}
+
+function openMobileDrawer(rail) {
+  rail.classList.add("open");
+  $("scrim").classList.add("show");
+}
+function closeMobileDrawers() {
+  document.querySelectorAll(".rail").forEach(r => r.classList.remove("open"));
+  $("scrim").classList.remove("show");
+}
+function closeAllRails() {
+  document.querySelectorAll(".rail").forEach(r => r.classList.remove("open"));
+  $("scrim").classList.remove("show");
+}
+
+/* ============================================================
+   初始化
+   ============================================================ */
+(function init() {
+  const d = new Date();
+  const wd = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"][d.getDay()];
+  $("masthead-date").textContent = `${d.getFullYear()} 年 ${d.getMonth() + 1} 月 ${d.getDate()} 日 · ${wd}`;
+
+  setAuthMode("login");
+  setupRails();
+  boot();
+})();
+
+async function boot() {
+  if (!token) { showLogin(); return; }
+  try {
+    user = await api("/api/auth/me");  /* 校验 token 有效性 */
+    enterApp();
+  } catch (e) {
+    /* 401 已由 sessionExpired 处理并回到登录页;其余(如网络错误)也先落到登录页 */
+    if (e.status !== 401) toast(e.message, "err");
+    showLogin();
+  }
+}
+</script>
+</body>
+</html>
