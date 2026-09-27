@@ -846,6 +846,29 @@ function setBtnLoading(btn, loading, text = "处理中…") {
 /* ============================================================
    视图切换
    ============================================================ */
+/* 清空上一个用户的阅读状态:防止下个登录用户看到别人的简报 */
+const DETAIL_EMPTY_SKELETON = `
+  <div style="display:flex;flex-direction:column;gap:14px;width:100%;max-width:520px" aria-hidden="true">
+    <span class="sk" style="width:58%;height:26px"></span>
+    <span class="sk" style="width:34%;height:13px"></span>
+    <span class="sk" style="width:100%;height:14px"></span>
+    <span class="sk" style="width:96%;height:14px"></span>
+    <span class="sk" style="width:98%;height:14px"></span>
+    <span class="sk" style="width:88%;height:14px"></span>
+    <span class="sk" style="width:62%;height:14px"></span>
+  </div>`;
+
+function resetReadingState() {
+  selectedDigestId = null;
+  digestCache.clear();
+  for (const k of Object.keys(digestVotes)) delete digestVotes[k];
+  $("detail-body").hidden = true;
+  $("detail-body").innerHTML = "";
+  $("detail-empty").hidden = false;
+  $("detail-empty").innerHTML = DETAIL_EMPTY_SKELETON;
+  $("btn-deliver").disabled = true;
+}
+
 function showLogin() {
   closeAllRails();
   $("view-app").hidden = true;
@@ -853,12 +876,14 @@ function showLogin() {
   $("masthead-user").hidden = true;
   $("login-form").reset();
   setAuthMode("login");
+  resetReadingState();  /* 换用户时清掉上一个用户的简报/缓存/投票状态 */
 }
 function enterApp() {
   $("view-login").hidden = true;
   $("view-app").hidden = false;
   $("masthead-user").hidden = false;
   resetRunBtn();
+  resetReadingState();  /* 防御性重置:任何进入路径都从干净状态开始 */
   loadSubscription();  /* 左侧边栏自动加载订阅 */
   loadDigests();       /* 右侧列表自动加载,中心自动展示最新一期 */
 }
@@ -1044,7 +1069,12 @@ async function loadDigests() {
           <p class="rail-empty-t">还没有简报</p>
           <p>点击上方「立即生成今日简报」,生成你的第一份简报</p>
         </div>`;
-      /* 列表确实为空 → 中央显示真·空状态(不再是加载态) */
+      /* 列表确实为空 → 收起阅读区,中央显示真·空状态(不再残留任何内容) */
+      selectedDigestId = null;
+      $("btn-deliver").disabled = true;
+      $("detail-body").hidden = true;
+      $("detail-body").innerHTML = "";
+      $("detail-empty").hidden = false;
       $("detail-empty").innerHTML = `
         <span class="newspaper" aria-hidden="true"><i class="np-mark"></i></span>
         <h3>还没有简报</h3>
